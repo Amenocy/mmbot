@@ -1,6 +1,5 @@
 #include "mylocalbroker.h"
 
-#include <openssl/hmac.h>
 #include <sstream>
 #include <random>
 #include <thread>
@@ -60,7 +59,6 @@ static Value apiKeyFmt({Object{{"name", "passphrase"}, {"label", "API Passphrase
 								{"label", "Paste the randomly generated passphrase into the API key creation request form using the Copy and Paste function."}}),
 						Object{{"name", "key"}, {"label", "Key"}, {"type", "string"}},
 						Object{{"name", "secret"}, {"label", "Secret"}, {"type", "string"}}});
-
 MyLocalBrokerIFC::MyLocalBrokerIFC(const std::string &cfg_file)
 	: AbstractBrokerAPI(cfg_file, apiKeyFmt), api(simpleServer::HttpClient("TraderBot/AMINMMPRO", simpleServer::newHttpsProvider(), 0, simpleServer::newCachedDNSProvider(15)), "https://api.mylocalbroker.com")
 {
@@ -114,21 +112,7 @@ AbstractBrokerAPI *MyLocalBrokerIFC::createSubaccount(
 
 void MyLocalBrokerIFC::onLoadApiKey(json::Value keyData)
 {
-	auto passphrase = keyData["passphrase"].getString();
 	api_key = keyData["key"].getString();
-	api_secret = keyData["secret"].getString();
-
-	api_passphrase.clear();
-	if (!passphrase.empty())
-	{
-		unsigned char sign[256];
-		unsigned int signLen(sizeof(sign));
-		HMAC(EVP_sha256(), api_secret.data(), api_secret.length(),
-			 reinterpret_cast<const unsigned char *>(passphrase.data()), passphrase.length(), sign, &signLen);
-		base64->encodeBinaryValue(json::BinaryView(sign, signLen), [&](std::string_view x)
-								  { api_passphrase.append(x); });
-	}
-
 	symbolExpires = api.now();
 }
 
@@ -539,8 +523,6 @@ Value MyLocalBrokerIFC::signRequest(const std::string_view &method, const std::s
 					   { digest.push_back(c); });
 	unsigned char sign[256];
 	unsigned int signLen(sizeof(sign));
-	HMAC(EVP_sha256(), api_secret.data(), api_secret.length(),
-		 reinterpret_cast<const unsigned char *>(digest.data()), digest.length(), sign, &signLen);
 	Value s = Object{
 		{"KC-API-KEY", api_key},
 		{"KC-API-SIGN", Value(json::BinaryView(sign, signLen), base64)},

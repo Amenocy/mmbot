@@ -13,7 +13,17 @@ IF(SYSTEM_NAME STREQUAL "FreeBSD")
    MESSAGE("-- Detected FreeBSD system")
    LINK_LIBRARIES(execinfo)   
 ENDIF(SYSTEM_NAME STREQUAL "FreeBSD")
+
+IF(SYSTEM_NAME STREQUAL "Darwin")
+   MESSAGE("-- Detected macOS system")
+   LINK_LIBRARIES(c++fs)
+   if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+      MESSAGE("-- Detected Apple Silicon (arm64)")
+   endif()
+ENDIF(SYSTEM_NAME STREQUAL "Darwin")
+
 LINK_LIBRARIES(ssl crypto pthread)
+
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/)
 
