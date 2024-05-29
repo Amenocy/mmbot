@@ -1,81 +1,108 @@
 #include "mylocalbroker.h"
 
 #include <sstream>
+
 #include <random>
+
 #include <thread>
 
 #include <imtjson/object.h>
+
 #include <imtjson/parser.h>
+
 #include <imtjson/serializer.h>
+
 #include <imtjson/binjson.tcc>
+
 #include <imtjson/operations.h>
+
 #include <shared/toString.h>
+
 #include <simpleServer/urlencode.h>
+
 #include "../../shared/logOutput.h"
 
 using ondra_shared::logDebug;
 
 using namespace json;
 
-static std::string_view favicon(
-	"iVBORw0KGgoAAAANSUhEUgAAAIAAAACABAMAAAAxEHz4AAAAG1BMVEUhAAAXp4oZqIsbqYwdqo0g"
-	"q44hrI8jrpAlr5HbXGoxAAAAAXRSTlMAQObYZgAAAg9JREFUaN7tmTtuxDAMRBcwMEfIEVK72vMQ"
-	"MMD7HyEpYmQl8atJulUpyoNn/UiRj8e71RpUL/L778Z+r+e2gP40EkBVSIBdBPwKCAmwh4BXASEB"
-	"IgQ4VowCEoJeKYCP4OljFpB4plIAD+G2nhmAg+BuVtUaAhwrLAFpCKgWEZ62EbaAlM+bahXBtsET"
-	"kKKAahnBNMEXkJKAah3BskwAnyGCJTBBHyGCYcD8wTNCMASWWQsR1n6swyOEVcBYtghh6YY1OEBY"
-	"BMx9EyDMvbCH+gjzWG/jughTJ7yBo+F0BbSAOhpGAfiThZKAlnbM4MgGAUR7FrZp6NPiwfUEEF8d"
-	"z/QXksvryAiQ3eBIViF3Y7HAR8ORFi5gqQaudR/mhM4tgHt4wYl5AdVRdMMyYDeCSWeSpCsg0U9X"
-	"BJZpv3oC0nmxxABHHqvHADDOby5QCAJDAcmDwHpIrRsCwgrQBPwc0KvA7wN6J/JngT6N/H1A30j8"
-	"nRgve0WA9gu0Z9rxjbR3puMDPkJJEdgoDXmgycaJfKRKx8p8tE6/F/gXC/1m8hBQfrU5CA3vZyKg"
-	"438thM7b2UJA6/VuIPTyBysCmhmMBaGbQ+GzOHQeic9k0bk0PpvX8Hh0RpPOqf5dVnc3r/zwBKqZ"
-	"bT63Tmf3/VpWOfBiKxx8jeX/qjx0nYmvdNG1Nr7aR9cbb4RtAL7myld93y1uX1kIUAloS5SdAAAA"
-	"AElFTkSuQmCC");
+static std::string_view
+	favicon("iVBORw0KGgoAAAANSUhEUgAAAIAAAACABAMAAAAxEHz4AAAAG1BMVEUhAAAXp4oZqI"
+			"sbqYwdqo0g"
+			"q44hrI8jrpAlr5HbXGoxAAAAAXRSTlMAQObYZgAAAg9JREFUaN7tmTtuxDAMRBcwME"
+			"fIEVK72vMQ"
+			"MMD7HyEpYmQl8atJulUpyoNn/UiRj8e71RpUL/"
+			"L778Z+r+e2gP40EkBVSIBdBPwKCAmwh4BXASEB"
+			"IgQ4VowCEoJeKYCP4OljFpB4plIAD+G2nhmAg+"
+			"BuVtUaAhwrLAFpCKgWEZ62EbaAlM+bahXBtsET"
+			"kKKAahnBNMEXkJKAah3BskwAnyGCJTBBHyGCYcD8wTNCMASWWQsR1n6swyOEVcBYtg"
+			"hh6YY1OEBY"
+			"BMx9EyDMvbCH+gjzWG/"
+			"jughTJ7yBo+F0BbSAOhpGAfiThZKAlnbM4MgGAUR7FrZp6NPiwfUEEF8d"
+			"z/QXksvryAiQ3eBIViF3Y7HAR8ORFi5gqQaudR/"
+			"mhM4tgHt4wYl5AdVRdMMyYDeCSWeSpCsg0U9X"
+			"BJZpv3oC0nmxxABHHqvHADDOby5QCAJDAcmDwHpIrRsCwgrQBPwc0KvA7wN6J/"
+			"JngT6N/H1A30j8"
+			"nRgve0WA9gu0Z9rxjbR3puMDPkJJEdgoDXmgycaJfKRKx8p8tE6/F/gXC/"
+			"1m8hBQfrU5CA3vZyKg"
+			"438thM7b2UJA6/"
+			"VuIPTyBysCmhmMBaGbQ+GzOHQeic9k0bk0PpvX8Hh0RpPOqf5dVnc3r/zwBKqZ"
+			"bT63Tmf3/VpWOfBiKxx8jeX/"
+			"qjx0nYmvdNG1Nr7aR9cbb4RtAL7myld93y1uX1kIUAloS5SdAAAA"
+			"AElFTkSuQmCC");
 
-static std::string_view licence(
-	R"mit(Copyright (c) 2019 Ondřej Novák
+static std::string_view
+	licence(R "mit(Copyright (c) 2019 Ondřej Novák
 
-		Permission is hereby granted, free of charge, to any person
-		obtaining a copy of this software and associated documentation
-		files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use,
-		copy, modify, merge, publish, distribute, sublicense, and/or sell
-		copies of the Software, and to permit persons to whom the
-		Software is furnished to do so, subject to the following
-		conditions:
+			Permission is hereby granted,
+			free of charge,
+			to any person obtaining a copy of this software and associated
+				documentation files(the "Software"),
+			to deal in the Software without restriction,
+			including without limitation the rights to use, copy, modify, merge,
+			publish, distribute, sublicense,
+			and / or sell copies of the Software,
+			and to permit persons to whom the Software is furnished to do so,
+			subject to the following conditions
+			:
 
-		The above copyright notice and this permission notice shall be
-		included in all copies or substantial portions of the Software.
+			The above copyright notice and this permission notice shall be
+					included in all copies or
+				substantial portions of the Software.
 
-		THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-		EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-		OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-		NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-		HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-		WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-		FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-		OTHER DEALINGS IN THE SOFTWARE.)mit");
+				THE SOFTWARE IS PROVIDED "AS IS",
+			WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+			INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+			FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT
+				SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+			DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+			TORT OR OTHERWISE, ARISING FROM,
+			OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+				DEALINGS IN THE SOFTWARE.) mit ");
 
-static Value apiKeyFmt({Object{{"name", "passphrase"}, {"label", "API Passphrase"}, {"type", "string"}},
-						Object({{"type", "label"},
-								{"label", "Paste the randomly generated passphrase into the API key creation request form using the Copy and Paste function."}}),
-						Object{{"name", "key"}, {"label", "Key"}, {"type", "string"}},
-						Object{{"name", "secret"}, {"label", "Secret"}, {"type", "string"}}});
+	static Value
+	apiKeyFmt({Object{{"name", "key"}, {"label", "Key"}, {"type", "string"}},
+			   Object{{"name", "api_address"},
+					  {"label", "api_address"},
+					  {"type", "string"}}});
 MyLocalBrokerIFC::MyLocalBrokerIFC(const std::string &cfg_file)
-	: AbstractBrokerAPI(cfg_file, apiKeyFmt), api(simpleServer::HttpClient("TraderBot/AMINMMPRO", simpleServer::newHttpsProvider(), 0, simpleServer::newCachedDNSProvider(15)), "https://api.mylocalbroker.com")
-{
-}
+	: AbstractBrokerAPI(cfg_file, apiKeyFmt),
+	  api(simpleServer::HttpClient("TraderBot/AMINMMPRO",
+								   simpleServer::newHttpsProvider(), 0,
+								   simpleServer::newCachedDNSProvider(15)),
+		  "https://api.mylocalbroker.com") {}
 
 IBrokerControl::BrokerInfo MyLocalBrokerIFC::getBrokerInfo()
 {
-	return BrokerInfo{
-		hasKey(),
-		"mylocalbroker",
-		"mylocalbroker",
-		"https://www.mylocalbroker.com/",
-		"1.0",
-		std::string(licence),
-		std::string(favicon),
-		false,
-		true};
+	return BrokerInfo{hasKey(),
+					  "mylocalbroker",
+					  "mylocalbroker",
+					  "https://www.mylocalbroker.com/",
+					  "1.0",
+					  std::string(licence),
+					  std::string(favicon),
+					  false,
+					  false};
 }
 
 std::vector<std::string> MyLocalBrokerIFC::getAllPairs()
@@ -88,15 +115,19 @@ std::vector<std::string> MyLocalBrokerIFC::getAllPairs()
 	return out;
 }
 
-bool MyLocalBrokerIFC::areMinuteDataAvailable(const std::string_view &asset, const std::string_view &currency)
+bool MyLocalBrokerIFC::areMinuteDataAvailable(
+	const std::string_view &asset, const std::string_view &currency)
 {
 	updateSymbols();
-	auto iter = std::find_if(symbolMap.begin(), symbolMap.end(), [&](const auto &x)
-							 { return x.second.currency_symbol == currency && x.second.asset_symbol == asset; });
+	auto iter =
+		std::find_if(symbolMap.begin(), symbolMap.end(), [&](const auto &x)
+					 { return x.second.currency_symbol == currency &&
+							  x.second.asset_symbol == asset; });
 	return iter != symbolMap.end();
 }
 
-IStockApi::MarketInfo MyLocalBrokerIFC::getMarketInfo(const std::string_view &pair)
+IStockApi::MarketInfo
+MyLocalBrokerIFC::getMarketInfo(const std::string_view &pair)
 {
 	const auto &s = findSymbol(pair);
 	if (s.fees < 0)
@@ -104,8 +135,8 @@ IStockApi::MarketInfo MyLocalBrokerIFC::getMarketInfo(const std::string_view &pa
 	return s;
 }
 
-AbstractBrokerAPI *MyLocalBrokerIFC::createSubaccount(
-	const std::string &secure_storage_path)
+AbstractBrokerAPI *
+MyLocalBrokerIFC::createSubaccount(const std::string &secure_storage_path)
 {
 	return new MyLocalBrokerIFC(secure_storage_path);
 }
@@ -116,28 +147,36 @@ void MyLocalBrokerIFC::onLoadApiKey(json::Value keyData)
 	symbolExpires = api.now();
 }
 
-uint64_t MyLocalBrokerIFC::downloadMinuteData(const std::string_view &asset, const std::string_view &currency,
-											  const std::string_view &hint_pair, uint64_t time_from, uint64_t time_to,
+uint64_t MyLocalBrokerIFC::downloadMinuteData(const std::string_view &asset,
+											  const std::string_view &currency,
+											  const std::string_view &hint_pair,
+											  uint64_t time_from,
+											  uint64_t time_to,
 											  HistData &xdata)
 {
 	updateSymbols();
 	auto iter = symbolMap.find(hint_pair);
 	if (iter == symbolMap.end())
 	{
-		iter = std::find_if(symbolMap.begin(), symbolMap.end(), [&](const auto &x)
-							{ return x.second.currency_symbol == currency && x.second.asset_symbol == asset; });
+		iter = std::find_if(symbolMap.begin(), symbolMap.end(),
+							[&](const auto &x)
+							{
+								return x.second.currency_symbol == currency &&
+									   x.second.asset_symbol == asset;
+							});
 	}
 	MinuteData data;
 	time_from /= 1000;
 	time_to /= 1000;
 	if (iter != symbolMap.end())
 	{
-		Value r = publicGET("/api/v1/market/candles", Object{
-														  {"type", "5min"},
-														  {"symbol", iter->first},
-														  {"startAt", time_from},
-														  {"endAt", time_to},
-													  });
+		Value r =
+			publicGET("/api/v1/market/candles", Object{
+													{"type", "5min"},
+													{"symbol", iter->first},
+													{"startAt", time_from},
+													{"endAt", time_to},
+												});
 		std::uint64_t minTime = time_to;
 		for (Value rw : r)
 		{
@@ -194,7 +233,8 @@ json::Value MyLocalBrokerIFC::getMarkets() const
 					   { return Value(x.first, x.second); })}};
 }
 
-double MyLocalBrokerIFC::getBalance(const std::string_view &symb, const std::string_view &)
+double MyLocalBrokerIFC::getBalance(const std::string_view &symb,
+									const std::string_view &)
 {
 	updateBalances();
 	auto iter = balanceMap.find(symb);
@@ -203,11 +243,10 @@ double MyLocalBrokerIFC::getBalance(const std::string_view &symb, const std::str
 	return iter->second;
 }
 
-void MyLocalBrokerIFC::onInit()
-{
-}
+void MyLocalBrokerIFC::onInit() {}
 
-IStockApi::TradesSync MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
+IStockApi::TradesSync
+MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 {
 	const MarketInfoEx &minfo = findSymbol(pair);
 
@@ -233,18 +272,21 @@ IStockApi::TradesSync MyLocalBrokerIFC::syncTrades(json::Value lastId, const std
 
 		bool timeOverflow = false;
 		std::uint64_t startAt = lastId[0].getUIntLong();
-		std::uint64_t endAt = std::chrono::duration_cast<std::chrono::milliseconds>(api.now().time_since_epoch()).count();
+		std::uint64_t endAt =
+			std::chrono::duration_cast<std::chrono::milliseconds>(
+				api.now().time_since_epoch())
+				.count();
 		if (endAt - startAt > 6 * 24 * 60 * 60 * 1000)
 		{
 			endAt = startAt + 6 * 24 * 60 * 60 * 1000;
 			timeOverflow = true;
 		}
 
-		Value fills = privateGET("/api/v1/fills", Object{
-													  {"symbol", pair},
-													  {"pageSize", 500},
-													  {"startAt", startAt},
-													  {"endAt", endAt}})["items"];
+		Value fills =
+			privateGET("/api/v1/fills", Object{{"symbol", pair},
+											   {"pageSize", 500},
+											   {"startAt", startAt},
+											   {"endAt", endAt}})["items"];
 		if (fills.empty())
 		{
 			if (timeOverflow)
@@ -265,36 +307,42 @@ IStockApi::TradesSync MyLocalBrokerIFC::syncTrades(json::Value lastId, const std
 			return {{}, {mostTime + 1, mostIDS}};
 		}
 		return {
-			mapJSON(ffils, [&](Value rw)
+			mapJSON(
+				ffils,
+				[&](Value rw)
+				{
+					double size = rw["size"].getNumber() *
+								  (rw["side"].getString() == "buy" ? 1 : -1);
+					double price = rw["price"].getNumber();
+					double fee = rw["fee"].getNumber();
+					double eff_price = price;
+					double eff_size = size;
+					std::string_view feeCurrency =
+						rw["feeCurrency"].getString();
+					if (feeCurrency == minfo.currency_symbol)
 					{
-						double size = rw["size"].getNumber() * (rw["side"].getString() == "buy" ? 1 : -1);
-						double price = rw["price"].getNumber();
-						double fee = rw["fee"].getNumber();
-						double eff_price = price;
-						double eff_size = size;
-						std::string_view feeCurrency = rw["feeCurrency"].getString();
-						if (feeCurrency == minfo.currency_symbol)
-						{
-							eff_price = (price * size + fee) / size;
-						}
-						else if (feeCurrency == minfo.asset_symbol)
-						{
-							eff_size = size - fee;
-						}
-						return Trade{
-							rw["tradeId"],
-							rw["createdAt"].getUIntLong(),
-							size, price,
-							eff_size, eff_price}; }, TradeHistory()),
+						eff_price = (price * size + fee) / size;
+					}
+					else if (feeCurrency == minfo.asset_symbol)
+					{
+						eff_size = size - fee;
+					}
+					return Trade{rw["tradeId"], rw["createdAt"].getUIntLong(),
+								 size, price,
+								 eff_size, eff_price};
+				},
+				TradeHistory()),
 			{mostTime, mostIDS}};
 	}
 	else
 	{
-		Value fills = privateGET("/api/v1/fills", Object{
-													  {"symbol", pair}})["items"];
+		Value fills =
+			privateGET("/api/v1/fills", Object{{"symbol", pair}})["items"];
 		findMostTime(fills);
 		if (mostTime == 0)
-			mostTime = std::chrono::duration_cast<std::chrono::milliseconds>(api.now().time_since_epoch()).count();
+			mostTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+						   api.now().time_since_epoch())
+						   .count();
 		return TradesSync{{}, {mostTime, mostIDS}};
 	}
 }
@@ -319,18 +367,19 @@ void MyLocalBrokerIFC::updateOrders()
 		orders.reserve(res.size());
 		for (Value row : res)
 		{
-			orders.push_back({row["symbol"].getString(),
-							  Order{
-								  row["id"].getString(),
-								  parseOid(row["clientOid"]),
-								  (row["size"].getNumber() - row["dealSize"].getNumber()) * (row["side"].getString() == "buy" ? 1 : -1),
-								  row["price"].getNumber()}});
+			orders.push_back(
+				{row["symbol"].getString(),
+				 Order{row["id"].getString(), parseOid(row["clientOid"]),
+					   (row["size"].getNumber() - row["dealSize"].getNumber()) *
+						   (row["side"].getString() == "buy" ? 1 : -1),
+					   row["price"].getNumber()}});
 		}
 		orderMap.emplace(std::move(orders));
 	}
 }
 
-IStockApi::Orders MyLocalBrokerIFC::getOpenOrders(const std::string_view &pair)
+IStockApi::Orders
+MyLocalBrokerIFC::getOpenOrders(const std::string_view &pair)
 {
 	updateOrders();
 	Orders res;
@@ -342,8 +391,11 @@ IStockApi::Orders MyLocalBrokerIFC::getOpenOrders(const std::string_view &pair)
 	return res;
 }
 
-json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair, double size, double price,
-										 json::Value clientId, json::Value replaceId, double replaceSize)
+json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair,
+										 double size, double price,
+										 json::Value clientId,
+										 json::Value replaceId,
+										 double replaceSize)
 {
 	if (replaceId.defined())
 	{
@@ -356,7 +408,8 @@ json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair, double si
 			Value v = privateGET(orderURI, Value());
 			if (v["isActive"].getBool() == false)
 			{
-				double remain = v["size"].getNumber() - v["dealSize"].getNumber();
+				double remain =
+					v["size"].getNumber() - v["dealSize"].getNumber();
 				if (remain > replaceSize * 0.95)
 					break;
 				else
@@ -367,16 +420,17 @@ json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair, double si
 	}
 	if (size)
 	{
-		Value c = privatePOST("/api/v1/orders", json::Object{
-													{"clientOid", generateOid(clientId)},
-													{"side", size < 0 ? "sell" : "buy"},
-													{"symbol", pair},
-													{"type", "limit"},
-													{"stp", "DC"},
-													{"price", price},
-													{"size", std::abs(size)},
-													{"postOnly", true},
-												});
+		Value c = privatePOST("/api/v1/orders",
+							  json::Object{
+								  {"clientOid", generateOid(clientId)},
+								  {"side", size < 0 ? "sell" : "buy"},
+								  {"symbol", pair},
+								  {"type", "limit"},
+								  {"stp", "DC"},
+								  {"price", price},
+								  {"size", std::abs(size)},
+								  {"postOnly", true},
+							  });
 		return c["orderId"];
 	}
 
@@ -397,34 +451,23 @@ IBrokerControl::AllWallets MyLocalBrokerIFC::getWallet()
 
 IStockApi::Ticker MyLocalBrokerIFC::getTicker(const std::string_view &pair)
 {
-	json::Value res = publicGET("/api/v1/market/orderbook/level1", Object{{"symbol", pair}});
+	json::Value res =
+		publicGET("/v2/orderbook/" + std::string(pair), Value());
+		// yes, this exchange sends ask and bid incorrectly :)
 	return IStockApi::Ticker{
-		res["bestBid"].getNumber(),
-		res["bestAsk"].getNumber(),
-		res["price"].getNumber(),
-		res["time"].getUIntLong()};
+		res["asks"][0][0].getNumber(), res["bids"][0][0].getNumber(),
+		res["lastTradePrice"].getNumber(), res["lastUpdate"].getUIntLong()};
 }
 
 json::Value MyLocalBrokerIFC::getApiKeyFields() const
 {
-	std::string randomPwd;
-	randomPwd.reserve(32);
-	std::random_device rnd;
-	std::uniform_int_distribution<int> rnd_code(0, 61);
-	for (int i = 0; i < 32; i++)
-	{
-		int code = rnd_code(rnd);
-		char c = code < 10 ? '0' + code : code < 36 ? 'A' + code - 10
-													: 'a' + code - 36;
-		randomPwd.push_back(c);
-	}
+
 	Value flds = AbstractBrokerAPI::getApiKeyFields();
-	Value pswd = flds[0];
-	pswd.setItems({{"default", randomPwd}});
-	return flds.replace(0, pswd);
+	return flds;
 }
 
-Value MyLocalBrokerIFC::publicGET(const std::string_view &uri, Value query) const
+Value MyLocalBrokerIFC::publicGET(const std::string_view &uri,
+								  Value query) const
 {
 	for (int i = 0; i < 5; i++)
 	{
@@ -440,7 +483,8 @@ Value MyLocalBrokerIFC::publicGET(const std::string_view &uri, Value query) cons
 	throw std::runtime_error("Market overloaded");
 }
 
-const std::string &MyLocalBrokerIFC::buildUri(const std::string_view &uri, Value query) const
+const std::string &MyLocalBrokerIFC::buildUri(const std::string_view &uri,
+											  Value query) const
 {
 	uriBuffer.clear();
 	uriBuffer.append(uri);
@@ -451,104 +495,11 @@ const std::string &MyLocalBrokerIFC::buildUri(const std::string_view &uri, Value
 		uriBuffer.append(v.getKey());
 		uriBuffer.push_back('=');
 		simpleServer::urlEncoder([&](char x)
-								 { uriBuffer.push_back(x); })(v.toString());
+								 { uriBuffer.push_back(x); })(
+			v.toString());
 		c = '&';
 	}
 	return uriBuffer;
-}
-
-bool MyLocalBrokerIFC::hasKey() const
-{
-	return !(api_passphrase.empty() || api_key.empty() || api_secret.empty());
-}
-
-Value MyLocalBrokerIFC::privateGET(const std::string_view &uri, Value query) const
-{
-	for (int i = 0; i < 5; i++)
-	{
-		try
-		{
-			std::string fulluri = buildUri(uri, query);
-			return processResponse(api.GET(fulluri, signRequest("GET", fulluri, Value())));
-		}
-		catch (const HTTPJson::UnknownStatusException &e)
-		{
-			processError(e);
-		}
-	}
-	throw std::runtime_error("Market overloaded");
-}
-
-Value MyLocalBrokerIFC::privatePOST(const std::string_view &uri, Value args) const
-{
-	for (int i = 0; i < 5; i++)
-	{
-		try
-		{
-			return processResponse(api.POST(uri, args, signRequest("POST", uri, args)));
-		}
-		catch (const HTTPJson::UnknownStatusException &e)
-		{
-			processError(e);
-		}
-	}
-	throw std::runtime_error("Market overloaded");
-}
-
-Value MyLocalBrokerIFC::privateDELETE(const std::string_view &uri, Value query) const
-{
-	for (int i = 0; i < 5; i++)
-	{
-		try
-		{
-			std::string fulluri = buildUri(uri, query);
-			return processResponse(api.DELETE(fulluri, Value(), signRequest("DELETE", fulluri, Value())));
-		}
-		catch (const HTTPJson::UnknownStatusException &e)
-		{
-			processError(e);
-		}
-	}
-	throw std::runtime_error("Market overloaded");
-}
-
-Value MyLocalBrokerIFC::signRequest(const std::string_view &method, const std::string_view &function, json::Value args) const
-{
-	std::string timestamp = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(api.now().time_since_epoch()).count());
-	std::string digest = timestamp;
-	digest.append(method);
-	digest.append(function);
-	if (args.defined())
-		args.serialize([&](char c)
-					   { digest.push_back(c); });
-	unsigned char sign[256];
-	unsigned int signLen(sizeof(sign));
-	Value s = Object{
-		{"KC-API-KEY", api_key},
-		{"KC-API-SIGN", Value(json::BinaryView(sign, signLen), base64)},
-		{"KC-API-TIMESTAMP", timestamp},
-		{"KC-API-PASSPHRASE", api_passphrase},
-		{"KC-API-KEY-VERSION", 2}};
-	logDebug("SIGN: $1", s.toString().str());
-	return s;
-}
-
-void MyLocalBrokerIFC::processError(const HTTPJson::UnknownStatusException &e) const
-{
-	std::ostringstream buff;
-	buff << e.getStatusCode() << " " << e.getStatusMessage();
-	try
-	{
-		auto s = e.response.getBody();
-		json::Value error = json::Value::parse(s);
-		if (e.getStatusCode() == 429 && error["code"].getUInt() == 429000)
-			return;
-		buff << " - " << error["code"].getUInt() << " " << error["msg"].getString();
-	}
-	catch (...)
-	{
-	}
-	throw std::runtime_error(buff.str());
 }
 
 double MyLocalBrokerIFC::getFees(const std::string_view &pair)
@@ -562,36 +513,40 @@ void MyLocalBrokerIFC::updateSymbols() const
 	if (symbolExpires <= now)
 	{
 
-		Value symblst = publicGET("/api/v1/symbols", Value());
+		Value resp = publicGET("/v2/options", Value());
+		Value amountPrecisions = resp["nobitex"]["amountPrecisions"];
+		Value pricePrecisions = resp["nobitex"]["pricePrecisions"];
+		Value minOrderSizes = resp["nobitex"]["minOrders"];
 		SymbolMap::Set::VecT smap;
 
-		for (Value s : symblst)
-		{
-			auto symbol = s["symbol"].getString();
-			MarketInfoEx nfo;
-			nfo.asset_step = s["baseIncrement"].getNumber();
-			nfo.currency_step = s["priceIncrement"].getNumber();
-			nfo.asset_symbol = s["baseCurrency"].getString();
-			nfo.currency_symbol = s["quoteCurrency"].getString();
-			nfo.feeScheme = currency;
-			nfo.fees = -1;
-			nfo.invert_price = false;
-			nfo.leverage = 0;
-			nfo.min_size = s["baseMinSize"].getNumber();
-			nfo.min_volume = s["quoteMinSize"].getNumber();
-			nfo.private_chart = false;
-			nfo.simulator = false;
-			nfo.wallet_id = "spot";
-			smap.emplace_back(std::string(symbol), std::move(nfo));
-		}
+		amountPrecisions.forEach([&](Value v){
+            std::string symbol = v.getKey();
+
+            if (symbol.find('USDT') != std::string_view::npos) {  
+                MarketInfoEx nfo;
+                nfo.asset_step = 1.0 / pow(10, v.getNumber());
+                nfo.currency_step = 1.0 / pow(10, pricePrecisions[symbol].getNumber());
+                nfo.asset_symbol = symbol.substr(0, symbol.find("USDT")); 
+                nfo.currency_symbol = "USDT";
+                nfo.feeScheme = currency;  
+                nfo.fees = -1; 
+                nfo.invert_price = false;
+                nfo.leverage = 0; 
+                nfo.min_size = minOrderSizes['usdt'].getNumber();
+            	nfo.min_volume = 0;
+                nfo.private_chart = false;
+                nfo.simulator = false;
+                nfo.wallet_id = "spot";
+                smap.emplace_back(std::move(symbol), std::move(nfo));
+            } });
 
 		symbolMap = SymbolMap(std::move(smap));
-
 		symbolExpires = now + std::chrono::hours(1);
 	}
 }
 
-const MyLocalBrokerIFC::MarketInfoEx &MyLocalBrokerIFC::findSymbol(const std::string_view &name) const
+const MyLocalBrokerIFC::MarketInfoEx &
+MyLocalBrokerIFC::findSymbol(const std::string_view &name) const
 {
 	updateSymbols();
 	auto iter = symbolMap.find(name);
@@ -606,33 +561,27 @@ void MyLocalBrokerIFC::updateSymbolFees(const std::string_view &name)
 	auto iter = symbolMap.find(name);
 	if (iter == symbolMap.end())
 		return;
-	if (hasKey())
-	{
-		Value x = privateGET("/api/v1/trade-fees", Object{{"symbols", name}});
-		iter->second.fees = x[0]["makerFeeRate"].getNumber();
-	}
-	else
-	{
-		iter->second.fees = 0.001;
-	}
+	// TODO add dynamic feeee 
+	// via https://api.nobitex.ir/users/profile options object
+	iter->second.fees = 0.001;
 }
 
 void MyLocalBrokerIFC::updateBalances()
 {
-	if (balanceMap.empty())
-	{
-		BalanceMap::Set::VecT b;
-		Value res = privateGET("/api/v1/accounts", Object{{"type", "trade"}});
-		for (Value r : res)
-		{
-			std::string_view cur = r["currency"].getString();
-			double balance = r["balance"].getNumber();
-			b.emplace_back(std::string(cur), balance);
-		}
+	if (balanceMap.empty()) 
+    {
+        Value res = privateGET("/users/wallets/balance", Object{});
+        BalanceMap::Set::VecT b; 
+        for (Value wallet : res["wallets"]) 
+        {
+            std::string_view cur = wallet["currency"].getString();
+            double balance = wallet["activeBalance"].getNumber();
+            b.emplace_back(std::string(cur), balance); 
+        }
 		if (b.empty())
 			b.emplace_back(std::string(""), 0.0);
-		balanceMap = BalanceMap(std::move(b));
-	}
+        balanceMap = BalanceMap(std::move(b));
+    }
 }
 
 json::Value MyLocalBrokerIFC::generateOid(Value clientId)
@@ -645,15 +594,6 @@ json::Value MyLocalBrokerIFC::generateOid(Value clientId)
 	return json::Value(json::BinaryView(oidBuff), base64url);
 }
 
-json::Value MyLocalBrokerIFC::processResponse(json::Value v) const
-{
-	if (v["data"].defined())
-		return v["data"];
-	std::ostringstream buff;
-	buff << v["code"].getUInt() << " " << v["msg"].getString();
-	throw std::runtime_error(buff.str());
-}
-
 Value MyLocalBrokerIFC::parseOid(json::Value oid)
 {
 	if (!oid.defined())
@@ -664,9 +604,17 @@ Value MyLocalBrokerIFC::parseOid(json::Value oid)
 	std::size_t c = 0;
 	try
 	{
-		Value v = Value::parseBinary([&]() -> int
-									 {
-			if (c < b.size()) {return b[c++];} else throw std::runtime_error("invalid oid"); }, base64url);
+		Value v = Value::parseBinary(
+			[&]() -> int
+			{
+				if (c < b.size())
+				{
+					return b[c++];
+				}
+				else
+					throw std::runtime_error("invalid oid");
+			},
+			base64url);
 		unsigned int id = v[0].getUInt();
 		if (id > nextId)
 			nextId = id;
@@ -676,4 +624,103 @@ Value MyLocalBrokerIFC::parseOid(json::Value oid)
 	{
 		return json::Value();
 	}
+}
+
+// Doooooooooooooooooone part
+
+json::Value MyLocalBrokerIFC::processResponse(json::Value v) const
+{
+	if (v["status"].getString() == "ok")
+		return v;
+	std::ostringstream buff;
+	buff << v["code"].getString() << " " << v["message"].getString();
+	throw std::runtime_error(buff.str());
+}
+
+void MyLocalBrokerIFC::processError(
+	const HTTPJson::UnknownStatusException &e) const
+{
+	std::ostringstream buff;
+	buff << e.getStatusCode() << " " << e.getStatusMessage();
+	try
+	{
+		auto s = e.response.getBody();
+		json::Value error = json::Value::parse(s);
+		if (e.getStatusCode() == 429)
+			return;
+		buff << " - " << error["code"].getString() << " "
+			 << error["message"].getString();
+	}
+	catch (...)
+	{
+	}
+	throw std::runtime_error(buff.str());
+}
+
+bool MyLocalBrokerIFC::hasKey() const { return !(api_key.empty()); }
+
+Value MyLocalBrokerIFC::privateGET(const std::string_view &uri,
+								   Value query) const
+{
+	for (int i = 0; i < 5; i++)
+	{
+		try
+		{
+			std::string fulluri = buildUri(uri, query);
+			return processResponse(
+				api.GET(fulluri, signRequest("GET", fulluri, Value())));
+		}
+		catch (const HTTPJson::UnknownStatusException &e)
+		{
+			processError(e);
+		}
+	}
+	throw std::runtime_error("Market overloaded");
+}
+
+Value MyLocalBrokerIFC::privatePOST(const std::string_view &uri,
+									Value args) const
+{
+	for (int i = 0; i < 5; i++)
+	{
+		try
+		{
+			return processResponse(
+				api.POST(uri, args, signRequest("POST", uri, args)));
+		}
+		catch (const HTTPJson::UnknownStatusException &e)
+		{
+			processError(e);
+		}
+	}
+	throw std::runtime_error("Market overloaded");
+}
+
+Value MyLocalBrokerIFC::privateDELETE(const std::string_view &uri,
+									  Value query) const
+{
+	for (int i = 0; i < 5; i++)
+	{
+		try
+		{
+			std::string fulluri = buildUri(uri, query);
+			return processResponse(api.DELETE(
+				fulluri, Value(), signRequest("DELETE", fulluri, Value())));
+		}
+		catch (const HTTPJson::UnknownStatusException &e)
+		{
+			processError(e);
+		}
+	}
+	throw std::runtime_error("Market overloaded");
+}
+
+Value MyLocalBrokerIFC::signRequest(const std::string_view &method,
+									const std::string_view &function,
+									json::Value args) const
+{
+
+	Value s = Object({"Authorization", "Token " + api_key});
+	logDebug("SIGN: $1", s.toString().str());
+	return s;
 }

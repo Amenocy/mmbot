@@ -63,7 +63,7 @@ protected:
 	mutable std::chrono::system_clock::time_point symbolExpires;
 	unsigned int nextId = 0;
 
-	std::string api_passphrase, api_key, api_secret;
+	std::string api_key;
 	bool hasKey() const;
 
 	/// Function returns, if request must be retried - otherwise it throws exception
