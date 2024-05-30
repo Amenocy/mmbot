@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y \
 
 
 WORKDIR /home/mmbotuser
+COPY . /home/mmbotuser/mmbot
 
-RUN git clone https://github.com/Amenocy/mmbot.git
+# RUN git clone https://github.com/Amenocy/mmbot.git
 WORKDIR /home/mmbotuser/mmbot
-RUN git checkout feat/mylocalbroker
-
+# RUN git checkout feat/mylocalbroker
+RUN git clean -d -f -x
 RUN ./update
 
 ENV TUNNEL_PORT 7667

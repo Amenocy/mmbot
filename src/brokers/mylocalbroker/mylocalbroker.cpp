@@ -103,7 +103,7 @@ IBrokerControl::BrokerInfo MyLocalBrokerIFC::getBrokerInfo()
 					  std::string(licence),
 					  std::string(favicon),
 					  false,
-					  false};
+					  true};
 }
 
 std::vector<std::string> MyLocalBrokerIFC::getAllPairs()
