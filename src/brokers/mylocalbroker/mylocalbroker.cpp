@@ -525,10 +525,10 @@ void MyLocalBrokerIFC::updateSymbols() const
 								 {
             std::string symbol = v.getKey();
 
-            if (endsWith(symbol,("USDT"))) {  
+            if (endsWith(symbol,"USDT")) {  
                 MarketInfoEx nfo;
-                nfo.asset_step = 1.0 / pow(10, v.getNumber());
-                nfo.currency_step = 1.0 / pow(10, pricePrecisions[symbol].getNumber());
+                nfo.asset_step = v.getNumber();
+                nfo.currency_step = pricePrecisions[symbol].getNumber();
                 nfo.asset_symbol = symbol.substr(0, symbol.find("USDT")); 
                 nfo.currency_symbol = "USDT";
                 nfo.feeScheme = currency;  
@@ -573,13 +573,16 @@ void MyLocalBrokerIFC::updateBalances()
 {
 	if (balanceMap.empty())
 	{
-		Value res = privateGET("/users/wallets/balance", Object{});
+		Value res = privatePOST("/users/wallets/list?type=spot", Object{});
 		BalanceMap::Set::VecT b;
 		for (Value wallet : res["wallets"])
 		{
 			std::string_view cur = wallet["currency"].getString();
+			std::string cur_str(cur);
+			std::transform(cur_str.begin(), cur_str.end(), cur_str.begin(), [](unsigned char c)
+						   { return std::toupper(c); });
 			double balance = wallet["activeBalance"].getNumber();
-			b.emplace_back(std::string(cur), balance);
+			b.emplace_back(std::string(cur_str), balance);
 		}
 		if (b.empty())
 			b.emplace_back(std::string(""), 0.0);
@@ -671,7 +674,7 @@ Value MyLocalBrokerIFC::privateGET(const std::string_view &uri,
 		{
 			std::string fulluri = buildUri(uri, query);
 			return processResponse(
-				api.GET(fulluri, signRequest("GET", fulluri, Value())));
+				api.GET(fulluri, std::move(signRequest())));
 		}
 		catch (const HTTPJson::UnknownStatusException &e)
 		{
@@ -688,8 +691,8 @@ Value MyLocalBrokerIFC::privatePOST(const std::string_view &uri,
 	{
 		try
 		{
-			return processResponse(
-				api.POST(uri, args, signRequest("POST", uri, args)));
+
+			return processResponse(api.POST(uri, args, std::move(signRequest())));
 		}
 		catch (const HTTPJson::UnknownStatusException &e)
 		{
@@ -708,7 +711,7 @@ Value MyLocalBrokerIFC::privateDELETE(const std::string_view &uri,
 		{
 			std::string fulluri = buildUri(uri, query);
 			return processResponse(api.DELETE(
-				fulluri, Value(), signRequest("DELETE", fulluri, Value())));
+				fulluri, Value(), std::move(signRequest())));
 		}
 		catch (const HTTPJson::UnknownStatusException &e)
 		{
@@ -718,12 +721,11 @@ Value MyLocalBrokerIFC::privateDELETE(const std::string_view &uri,
 	throw std::runtime_error("Market overloaded");
 }
 
-Value MyLocalBrokerIFC::signRequest(const std::string_view &method,
-									const std::string_view &function,
-									json::Value args) const
+Value MyLocalBrokerIFC::signRequest() const
 {
+	Value headers = Object({{"Authorization",
+							 "Token " + api_key},
+							{"Amin", "mmb"}});
 
-	Value s = Object({"Authorization", "Token " + api_key});
-	logDebug("SIGN: $1", s.toString().str());
-	return s;
+	return headers;
 }

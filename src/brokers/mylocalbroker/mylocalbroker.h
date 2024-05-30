@@ -47,7 +47,7 @@ protected:
 	Value privateGET(const std::string_view &uri, Value query) const;
 	Value privatePOST(const std::string_view &uri, Value args) const;
 	Value privateDELETE(const std::string_view &uri, Value query) const;
-	Value signRequest(const std::string_view &method, const std::string_view &function, json::Value args) const;
+	Value signRequest() const;
 	const std::string &buildUri(const std::string_view &uri, Value query) const;
 
 	struct MarketInfoEx : public MarketInfo
