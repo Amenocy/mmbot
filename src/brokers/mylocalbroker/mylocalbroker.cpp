@@ -85,12 +85,13 @@ static std::string_view
 			   Object{{"name", "api_address"},
 					  {"label", "api_address"},
 					  {"type", "string"}}});
+					  // https://api.nobitex.ir
 MyLocalBrokerIFC::MyLocalBrokerIFC(const std::string &cfg_file)
 	: AbstractBrokerAPI(cfg_file, apiKeyFmt),
 	  api(simpleServer::HttpClient("TraderBot/AMINMMPRO",
 								   simpleServer::newHttpsProvider(), 0,
 								   simpleServer::newCachedDNSProvider(15)),
-		  "https://api.mylocalbroker.com") {}
+		  "https://testnetapi.nobitex.ir") {}
 
 IBrokerControl::BrokerInfo MyLocalBrokerIFC::getBrokerInfo()
 {
