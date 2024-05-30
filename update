@@ -5,5 +5,5 @@ git submodule update --init
 git -c user.name="Update" -c user.email="update@localhost.localdomain"  commit -a -m "" --allow-empty-message 
 set -e
 git  -c user.name="Update" -c user.email="update@localhost.localdomain" pull --no-commit
-# git submodule update --init
+git submodule update --init
 /bin/sh ./post_update.sh
