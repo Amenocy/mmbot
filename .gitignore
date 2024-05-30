@@ -24,3 +24,4 @@ www/src/.cache
 /www/new
 /.vscode
 /.idea
+.ds_store

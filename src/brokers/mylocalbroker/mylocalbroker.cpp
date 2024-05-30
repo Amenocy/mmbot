@@ -52,7 +52,7 @@ static std::string_view
 			"AElFTkSuQmCC");
 
 static std::string_view licence(
-		R"mit(Copyright (c) 2019 Ondřej Novák
+	R"mit(Copyright (c) 2019 Ondřej Novák
 
 		Permission is hereby granted, free of charge, to any person
 		obtaining a copy of this software and associated documentation
@@ -72,21 +72,20 @@ static std::string_view licence(
 		HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 		WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 		FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-		OTHER DEALINGS IN THE SOFTWARE.)mit"
-);
+		OTHER DEALINGS IN THE SOFTWARE.)mit");
 
-	static Value
+static Value
 	apiKeyFmt({Object{{"name", "key"}, {"label", "Key"}, {"type", "string"}},
 			   Object{{"name", "api_address"},
 					  {"label", "api_address"},
 					  {"type", "string"}}});
-					  // https://api.nobitex.ir
+// https://api.nobitex.ir
 MyLocalBrokerIFC::MyLocalBrokerIFC(const std::string &cfg_file)
 	: AbstractBrokerAPI(cfg_file, apiKeyFmt),
 	  api(simpleServer::HttpClient("TraderBot/AMINMMPRO",
 								   simpleServer::newHttpsProvider(), 0,
 								   simpleServer::newCachedDNSProvider(15)),
-		  "https://testnetapi.nobitex.ir") {}
+		  "https://api.nobitex.ir") {}
 
 IBrokerControl::BrokerInfo MyLocalBrokerIFC::getBrokerInfo()
 {
@@ -449,7 +448,7 @@ IStockApi::Ticker MyLocalBrokerIFC::getTicker(const std::string_view &pair)
 {
 	json::Value res =
 		publicGET("/v2/orderbook/" + std::string(pair), Value());
-		// yes, this exchange sends ask and bid incorrectly :)
+	// yes, this exchange sends ask and bid incorrectly :)
 	return IStockApi::Ticker{
 		res["asks"][0][0].getNumber(), res["bids"][0][0].getNumber(),
 		res["lastTradePrice"].getNumber(), res["lastUpdate"].getUIntLong()};
@@ -502,7 +501,14 @@ double MyLocalBrokerIFC::getFees(const std::string_view &pair)
 {
 	return getMarketInfo(pair).fees;
 }
-
+bool endsWith(const std::string &str, const std::string &suffix)
+{
+	if (str.length() < suffix.length())
+	{
+		return false;
+	}
+	return str.rfind(suffix) == str.length() - suffix.length();
+}
 void MyLocalBrokerIFC::updateSymbols() const
 {
 	auto now = api.now();
@@ -515,10 +521,11 @@ void MyLocalBrokerIFC::updateSymbols() const
 		Value minOrderSizes = resp["nobitex"]["minOrders"];
 		SymbolMap::Set::VecT smap;
 
-		amountPrecisions.forEach([&](Value v){
+		amountPrecisions.forEach([&](Value v)
+								 {
             std::string symbol = v.getKey();
 
-            if (symbol.find('USDT') != std::string_view::npos) {  
+            if (endsWith(symbol,("USDT"))) {  
                 MarketInfoEx nfo;
                 nfo.asset_step = 1.0 / pow(10, v.getNumber());
                 nfo.currency_step = 1.0 / pow(10, pricePrecisions[symbol].getNumber());
@@ -557,27 +564,27 @@ void MyLocalBrokerIFC::updateSymbolFees(const std::string_view &name)
 	auto iter = symbolMap.find(name);
 	if (iter == symbolMap.end())
 		return;
-	// TODO add dynamic feeee 
+	// TODO add dynamic feeee
 	// via https://api.nobitex.ir/users/profile options object
 	iter->second.fees = 0.001;
 }
 
 void MyLocalBrokerIFC::updateBalances()
 {
-	if (balanceMap.empty()) 
-    {
-        Value res = privateGET("/users/wallets/balance", Object{});
-        BalanceMap::Set::VecT b; 
-        for (Value wallet : res["wallets"]) 
-        {
-            std::string_view cur = wallet["currency"].getString();
-            double balance = wallet["activeBalance"].getNumber();
-            b.emplace_back(std::string(cur), balance); 
-        }
+	if (balanceMap.empty())
+	{
+		Value res = privateGET("/users/wallets/balance", Object{});
+		BalanceMap::Set::VecT b;
+		for (Value wallet : res["wallets"])
+		{
+			std::string_view cur = wallet["currency"].getString();
+			double balance = wallet["activeBalance"].getNumber();
+			b.emplace_back(std::string(cur), balance);
+		}
 		if (b.empty())
 			b.emplace_back(std::string(""), 0.0);
-        balanceMap = BalanceMap(std::move(b));
-    }
+		balanceMap = BalanceMap(std::move(b));
+	}
 }
 
 json::Value MyLocalBrokerIFC::generateOid(Value clientId)
