@@ -244,101 +244,72 @@ IStockApi::TradesSync
 MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 {
 	const MarketInfoEx &minfo = findSymbol(pair);
-
-	Array mostIDS;
-	std::uint64_t mostTime = 0;
-	auto findMostTime = [&](Value trades)
+	
+	int mostID;
+	auto findMostID = [&](Value trades)
 	{
 		for (Value f : trades)
 		{
-			std::uint64_t t = iso8601ToMillis(f["timestamp"].getString());
-			if (mostTime <= t)
+			int t = f["id"].getNumber();
+			if (mostID <= t)
 			{
-				if (mostTime < t)
-					mostIDS.clear();
-				mostIDS.push_back(f["id"]);
-				mostTime = t;
+				mostID = t;
 			}
 		}
 	};
 
-	if (lastId[0].getUIntLong() > 0)
+	if (lastId.getInt() > 0)
 	{
 
-		bool timeOverflow = false;
-		std::uint64_t startAt = lastId[0].getUIntLong();
-		std::uint64_t endAt =
-			std::chrono::duration_cast<std::chrono::milliseconds>(
-				api.now().time_since_epoch())
-				.count();
-		if (endAt - startAt > 6 * 24 * 60 * 60 * 1000)
-		{
-			endAt = startAt + 6 * 24 * 60 * 60 * 1000;
-			timeOverflow = true;
-		}
+		
+		Value trades = privatePOST("/market/trades/list", Object{{"fromId",lastId},{"srcCurrency", minfo.asset_symbol},{"dstCurrency","usdt"}})["trades"];
 
-		Value fills =
-			privateGET("/api/v1/fills", Object{{"symbol", pair},
-											   {"pageSize", 500},
-											   {"startAt", startAt},
-											   {"endAt", endAt}})["items"];
-		if (fills.empty())
+		if (trades.empty())
 		{
-			if (timeOverflow)
-			{
-				return {{}, {(startAt + endAt) >> 1, {}}};
-			}
-			else
-			{
-				return {{}, lastId};
-			}
+			
+			return {{}, lastId};
+			
 		}
-		fills = fills.reverse();
-		findMostTime(fills);
-		Value ffils = fills.filter([&](Value r)
-			{ return lastId[1].indexOf(r["id"]) == Value::npos; });
-		if (!fills.empty() && ffils.empty())
+		trades = trades.reverse();
+		Value ftrades = trades.filter([&](Value r)
+			{ return lastId == r["id"]; });
+		findMostID(trades);
+		if (!trades.empty() && ftrades.empty())
 		{
-			return {{}, {mostTime + 1, mostIDS}};
+			return {{}, mostID};
 		}
 		return {
-			mapJSON(
-				ffils,
-				[&](Value rw)
-				{
-					double size = rw["size"].getNumber() *
-								  (rw["side"].getString() == "buy" ? 1 : -1);
-					double price = rw["price"].getNumber();
-					double fee = rw["fee"].getNumber();
-					double eff_price = price;
-					double eff_size = size;
-					std::string_view feeCurrency =
-						rw["feeCurrency"].getString();
-					if (feeCurrency == minfo.currency_symbol)
-					{
-						eff_price = (price * size + fee) / size;
-					}
-					else if (feeCurrency == minfo.asset_symbol)
-					{
-						eff_size = size - fee;
-					}
-					return Trade{rw["tradeId"], rw["createdAt"].getUIntLong(),
-								 size, price,
-								 eff_size, eff_price};
-				},
-				TradeHistory()),
-			{mostTime, mostIDS}};
+		mapJSON(ftrades,
+			[&](Value rw) {
+				double size = rw["amount"].getNumber() * (rw["type"].getString() == "buy" ? 1 : -1);
+				double price = rw["price"].getNumber();
+				double fee = rw["fee"].getNumber();
+				double eff_price = price;  
+				double eff_size = size;
+
+				std::string feeCurrency = rw["type"].getString() == "buy" ?  minfo.asset_symbol : minfo.currency_symbol; 
+				if (feeCurrency == minfo.currency_symbol) {
+					eff_price = (price * size + fee) / size; // Adjust if fee affects price
+				} else if (feeCurrency == minfo.asset_symbol) {
+					eff_size = size - fee;                   // Adjust if fee affects size
+				}
+
+				return Trade{
+					rw["id"].getUIntLong(),       
+					iso8601ToMillis(rw["timestamp"].getString()),  
+					size, price,
+					eff_size, eff_price
+				};
+			},
+			TradeHistory()),mostID
+	};
 	}
 	else
 	{
-		Value fills =
-			privateGET("/api/v1/fills", Object{{"symbol", pair}})["items"];
-		findMostTime(fills);
-		if (mostTime == 0)
-			mostTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-						   api.now().time_since_epoch())
-						   .count();
-		return TradesSync{{}, {mostTime, mostIDS}};
+		Value trades =
+			privatePOST("/market/trades/list", Object{{"srcCurrency", minfo.asset_symbol},{"dstCurrency","usdt"}})["trades"];
+		findMostID(trades);
+		return TradesSync{{}, mostID};
 	}
 }
 
@@ -524,13 +495,16 @@ void MyLocalBrokerIFC::updateSymbols() const
 		amountPrecisions.forEach([&](Value v)
 								 {
             std::string symbol = v.getKey();
-
-            if (endsWith(symbol,"USDT")) {  
+			// todo urgent make symbol lowecase and TEST
+			std::string symbol_low(symbol);
+			std::transform(symbol_low.begin(), symbol_low.end(), symbol_low.begin(), [](unsigned char c)
+				{ return std::tolower(c); });
+            if (endsWith(symbol_low,"usdt")) {  
                 MarketInfoEx nfo;
                 nfo.asset_step = v.getNumber();
                 nfo.currency_step = pricePrecisions[symbol].getNumber();
-                nfo.asset_symbol = symbol.substr(0, symbol.find("USDT")); 
-                nfo.currency_symbol = "USDT";
+                nfo.asset_symbol = symbol_low.substr(0, symbol_low.find("usdt")); 
+                nfo.currency_symbol = "usdt";
                 nfo.feeScheme = currency;  
                 nfo.fees = -1; 
                 nfo.invert_price = false;
@@ -540,7 +514,7 @@ void MyLocalBrokerIFC::updateSymbols() const
                 nfo.private_chart = false;
                 nfo.simulator = false;
                 nfo.wallet_id = "spot";
-                smap.emplace_back(std::move(symbol), std::move(nfo));
+                smap.emplace_back(std::move(symbol_low), std::move(nfo));
             } });
 
 		symbolMap = SymbolMap(std::move(smap));
@@ -578,11 +552,11 @@ void MyLocalBrokerIFC::updateBalances()
 		for (Value wallet : res["wallets"])
 		{
 			std::string_view cur = wallet["currency"].getString();
-			std::string cur_str(cur);
-			std::transform(cur_str.begin(), cur_str.end(), cur_str.begin(), [](unsigned char c)
-						   { return std::toupper(c); });
+			// std::string cur_str(cur);
+			// std::transform(cur_str.begin(), cur_str.end(), cur_str.begin(), [](unsigned char c)
+			// 			   { return std::toupper(c); });
 			double balance = wallet["activeBalance"].getNumber();
-			b.emplace_back(std::string(cur_str), balance);
+			b.emplace_back(std::string(cur), balance);
 		}
 		if (b.empty())
 			b.emplace_back(std::string(""), 0.0);
@@ -631,8 +605,6 @@ Value MyLocalBrokerIFC::parseOid(json::Value oid)
 		return json::Value();
 	}
 }
-
-// Doooooooooooooooooone part
 
 json::Value MyLocalBrokerIFC::processResponse(json::Value v) const
 {
@@ -730,7 +702,7 @@ Value MyLocalBrokerIFC::signRequest() const
 	return headers;
 }
 
-long long MyLocalBrokerIFC::iso8601ToMillis(const std::string &timeStr)
+unsigned long MyLocalBrokerIFC::iso8601ToMillis(const std::string &timeStr)
 {
 	std::istringstream ss(timeStr);
 	std::tm tm = {};
