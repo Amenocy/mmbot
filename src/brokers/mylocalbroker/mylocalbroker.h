@@ -37,6 +37,8 @@ public:
 	virtual IBrokerControl::AllWallets getWallet() override;
 	virtual IStockApi::Ticker getTicker(const std::string_view &piar) override;
 	virtual json::Value getApiKeyFields() const override;
+	virtual long long iso8601ToMillis(const std::string &timeStr);
+
 
 protected:
 	mutable HTTPJson api;

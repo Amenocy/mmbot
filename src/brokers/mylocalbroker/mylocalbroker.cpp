@@ -730,7 +730,7 @@ Value MyLocalBrokerIFC::signRequest() const
 	return headers;
 }
 
-long long iso8601ToMillis(const std::string &timeStr)
+long long MyLocalBrokerIFC::iso8601ToMillis(const std::string &timeStr)
 {
 	std::istringstream ss(timeStr);
 	std::tm tm = {};
