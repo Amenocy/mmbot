@@ -1,7 +1,7 @@
 #include "mylocalbroker.h"
 
 #include <sstream>
-
+#include <iomanip>
 #include <random>
 
 #include <thread>
@@ -247,16 +247,16 @@ MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 
 	Array mostIDS;
 	std::uint64_t mostTime = 0;
-	auto findMostTime = [&](Value fills)
+	auto findMostTime = [&](Value trades)
 	{
-		for (Value f : fills)
+		for (Value f : trades)
 		{
-			std::uint64_t t = f["createdAt"].getUIntLong();
+			std::uint64_t t = iso8601ToMillis(f["timestamp"].getString());
 			if (mostTime <= t)
 			{
 				if (mostTime < t)
 					mostIDS.clear();
-				mostIDS.push_back(f["tradeId"]);
+				mostIDS.push_back(f["id"]);
 				mostTime = t;
 			}
 		}
@@ -296,7 +296,7 @@ MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 		fills = fills.reverse();
 		findMostTime(fills);
 		Value ffils = fills.filter([&](Value r)
-								   { return lastId[1].indexOf(r["tradeId"]) == Value::npos; });
+			{ return lastId[1].indexOf(r["id"]) == Value::npos; });
 		if (!fills.empty() && ffils.empty())
 		{
 			return {{}, {mostTime + 1, mostIDS}};
@@ -728,4 +728,41 @@ Value MyLocalBrokerIFC::signRequest() const
 							{"Amin", "mmb"}});
 
 	return headers;
+}
+
+long long iso8601ToMillis(const std::string &timeStr)
+{
+	std::istringstream ss(timeStr);
+	std::tm tm = {};
+	ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+
+	if (ss.fail())
+	{
+		throw std::invalid_argument("Invalid ISO 8601 format: " + timeStr);
+	}
+
+	// Handle fractional seconds (optional)
+	long long milliseconds = 0;
+	char dot;
+	if (ss >> dot)
+	{
+		int millisPart;
+		ss >> millisPart;
+		milliseconds = millisPart;
+	}
+
+	// Handle timezone offset (optional)
+	int offsetHours = 0, offsetMinutes = 0;
+	char sign;
+	if (ss >> sign)
+	{
+		ss >> offsetHours >> std::ws; // Read hours and discard colon
+		ss >> offsetMinutes;
+		milliseconds += (sign == '+' ? -1 : 1) * (offsetHours * 3600000 + offsetMinutes * 60000);
+	}
+
+	// Convert to milliseconds since epoch
+	std::chrono::system_clock::time_point tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+	auto duration = tp.time_since_epoch();
+	return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() + milliseconds;
 }
