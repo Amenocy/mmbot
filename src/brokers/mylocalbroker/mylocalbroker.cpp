@@ -410,8 +410,11 @@ IBrokerControl::AllWallets MyLocalBrokerIFC::getWallet()
 
 IStockApi::Ticker MyLocalBrokerIFC::getTicker(const std::string_view &pair)
 {
+	std::string upPair(pair);
+	std::transform(upPair.begin(), upPair.end(), upPair.begin(), [](unsigned char c)
+						   { return std::toupper(c); });
 	json::Value res =
-		publicGET("/v2/orderbook/" + std::string(pair), Value());
+		publicGET("/v2/orderbook/" + std::string(upPair), Value());
 	// yes, this exchange sends ask and bid incorrectly :)
 	return IStockApi::Ticker{
 		res["asks"][0][0].getNumber(), res["bids"][0][0].getNumber(),
