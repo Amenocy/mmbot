@@ -345,17 +345,20 @@ Retrieves currently opened (active) orders (LIMIT orders)
 
 ```
 [ "placeOrder", {
+  "pair":<market>,
       "size":<number>,
       "price":<number>,
       "clientOrderId:<number>}]   (1)
 [ "placeOrder", {
+  "pair":<market>,
       "size":<number>,
       "price":<number>,
       "clientOrderId:<number>,
       "replaceOrderId:<any>,
-      "replaceOrderSide:<number>
+      "replaceOrderSize:<number>
       }]                          (2)
 [ "placeOrder", {
+  "pair":<market>,
       "size":0,
       "price":0,
       "replaceOrderId:<any>

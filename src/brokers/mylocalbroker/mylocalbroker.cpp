@@ -3,7 +3,8 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
-
+#include <string>
+#include <string_view>
 #include <thread>
 
 #include <imtjson/object.h>
@@ -149,53 +150,43 @@ uint64_t MyLocalBrokerIFC::downloadMinuteData(const std::string_view &asset,
 											  uint64_t time_to,
 											  HistData &xdata)
 {
-	updateSymbols();
-	auto iter = symbolMap.find(hint_pair);
-	if (iter == symbolMap.end())
-	{
-		iter = std::find_if(symbolMap.begin(), symbolMap.end(),
-							[&](const auto &x)
-							{
-								return x.second.currency_symbol == currency &&
-									   x.second.asset_symbol == asset;
-							});
-	}
-	MinuteData data;
-	time_from /= 1000;
-	time_to /= 1000;
-	if (iter != symbolMap.end())
-	{
+	const int CANDLE_INTERVAL = 5 * 60;
+    const int FETCH_LIMIT = 500; 
+	uint64_t current_time = time_from;
+	logDebug("downloadMinuteData",asset,currency,hint_pair,time_from,time_to);
+
+    while (current_time < time_to) {
+        uint64_t end_time = std::min(current_time + CANDLE_INTERVAL * FETCH_LIMIT, time_to);
+		MinuteData data;
 		Value r =
-			publicGET("/api/v1/market/candles", Object{
-													{"type", "5min"},
-													{"symbol", iter->first},
-													{"startAt", time_from},
-													{"endAt", time_to},
+			publicGET("/market/udf/history", Object{
+													{"resolution", "5"},
+													{"symbol", hint_pair},
+													{"from", time_from},
+													{"to", time_to},
 												});
+		Value t = r["t"];
+		
+		int t_size = sizeof(t) / sizeof(t[0]);
 		std::uint64_t minTime = time_to;
-		for (Value rw : r)
+		 for (int i = 0; i < t_size; i++)
 		{
-			std::uint64_t tm = rw[0].getUIntLong();
-			if (tm >= time_from && tm < time_to)
-			{
-				double o = rw[1].getNumber();
-				double c = rw[2].getNumber();
-				double h = rw[3].getNumber();
-				double l = rw[4].getNumber();
+			std::uint64_t tm = t[i].getUIntLong();
+			
+				double o = r["o"][i].getNumber();
+				double c = r["c"][i].getNumber();
+				double h = r["h"][i].getNumber();
+				double l = r["l"][i].getNumber();
 				double m = std::sqrt(h * l);
-				while (tm + 5 * 60 < minTime)
-				{
-					minTime -= 60;
-					data.push_back(c);
-				}
 				data.push_back(c);
 				data.push_back(l);
 				data.push_back(m);
 				data.push_back(h);
 				data.push_back(o);
 				minTime = tm;
-			}
+			
 		}
+		
 		std::reverse(data.begin(), data.end());
 		if (data.empty())
 		{
@@ -204,15 +195,11 @@ uint64_t MyLocalBrokerIFC::downloadMinuteData(const std::string_view &asset,
 		else
 		{
 			xdata = std::move(data);
-			return minTime * 1000;
 		}
-	}
-	else
-	{
-		return 0;
-	}
-
-	return 0;
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        current_time = end_time; 
+    }
+	return time_to;
 }
 
 json::Value MyLocalBrokerIFC::getMarkets() const
@@ -320,34 +307,30 @@ bool MyLocalBrokerIFC::reset()
 	return true;
 }
 
-void MyLocalBrokerIFC::updateOrders()
-{
-	if (!orderMap.has_value())
-	{
-		Value res = privateGET("/api/v1/orders", Object{
-													 {"status", "active"},
-													 {"pageSize", 500},
-												 })["items"];
-
-		OrderMap orders;
-		orders.reserve(res.size());
-		for (Value row : res)
-		{
-			orders.push_back(
-				{row["symbol"].getString(),
-				 Order{row["id"].getString(), parseOid(row["clientOid"]),
-					   (row["size"].getNumber() - row["dealSize"].getNumber()) *
-						   (row["side"].getString() == "buy" ? 1 : -1),
-					   row["price"].getNumber()}});
-		}
-		orderMap.emplace(std::move(orders));
-	}
-}
 
 IStockApi::Orders
 MyLocalBrokerIFC::getOpenOrders(const std::string_view &pair)
 {
-	updateOrders();
+	
+	const MarketInfoEx &minfo = findSymbol(pair);
+	if (!orderMap.has_value())
+	{
+		Value nb_orders =
+			privatePOST("/market/orders/list", Object{{"srcCurrency", minfo.asset_symbol},{"dstCurrency","usdt"},{"status","open"},{"details","2"}})["orders"];
+
+		OrderMap orders;
+		orders.reserve(nb_orders.size());
+		for (Value row : nb_orders)
+		{
+			orders.push_back(
+				{minfo.asset_symbol+"usdt",
+				 Order{std::to_string(row["id"].getInt()), parseOid(row["clientOrderId"]),
+					   (row["amount"].getNumber() - row["matchedAmount"].getNumber()) *
+						   (row["type"].getString() == "buy" ? 1 : -1),
+					   row["price"].getNumber()}});
+		}
+		orderMap.emplace(std::move(orders));
+	}
 	Orders res;
 	for (const auto &x : *orderMap)
 	{
@@ -363,41 +346,51 @@ json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair,
 										 json::Value replaceId,
 										 double replaceSize)
 {
+	double createOrderSize = size;
+	const MarketInfoEx &minfo = findSymbol(pair);
 	if (replaceId.defined())
 	{
-		std::string orderURI("/api/v1/orders/");
-		orderURI.append(replaceId.getString());
-		privateDELETE(orderURI, Value());
+		
+		// cancel the order.
+		Value c = privatePOST("/market/orders/update-status",
+							  json::Object{
+								  {"order", replaceId},
+								  {"status", "canceled"}
+							  });
+		if(size == 0){
+			// it was just a cancel order.
+			return nullptr;
+		}
 
-		do
-		{
-			Value v = privateGET(orderURI, Value());
-			if (v["isActive"].getBool() == false)
+		
+			Value v = privatePOST("/market/orders/status", json::Object{
+								  {"id", replaceId}
+							  });
+			if (v["status"].getString() == "Canceled")
 			{
-				double remain =
-					v["size"].getNumber() - v["dealSize"].getNumber();
-				if (remain > replaceSize * 0.95)
-					break;
+				double remain = v["unmatchedAmount"].getNumber();
+				if (remain >= replaceSize )
+					createOrderSize = replaceSize;
 				else
 					return nullptr;
+			}else {
+				return nullptr;
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));
-		} while (true);
+			
 	}
 	if (size)
 	{
-		Value c = privatePOST("/api/v1/orders",
+		Value c = privatePOST("/market/orders/add",
 							  json::Object{
-								  {"clientOid", generateOid(clientId)},
-								  {"side", size < 0 ? "sell" : "buy"},
-								  {"symbol", pair},
-								  {"type", "limit"},
-								  {"stp", "DC"},
-								  {"price", price},
-								  {"size", std::abs(size)},
-								  {"postOnly", true},
+								{"type", size < 0 ? "sell" : "buy"},
+								{"execution","limit"},
+								{"srcCurrency", minfo.asset_symbol},
+								{"dstCurrency", "usdt"},  
+								{"price", price},
+								{"amount", std::abs(createOrderSize)},
+								{"clientOrderId", generateOid(clientId)},
 							  });
-		return c["orderId"];
+		return c["order"]["id"];
 	}
 
 	return nullptr;
