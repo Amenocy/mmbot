@@ -232,7 +232,7 @@ MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 {
 	const MarketInfoEx &minfo = findSymbol(pair);
 	
-	int mostID;
+	int mostID = 0;
 	auto findMostID = [&](Value trades)
 	{
 		for (Value f : trades)
@@ -245,7 +245,7 @@ MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 		}
 	};
 
-	if (lastId.getInt() > 0)
+	if (lastId.getInt() >= 0)
 	{
 
 		
