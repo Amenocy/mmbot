@@ -8,7 +8,7 @@ fi
 if [ "$1" = "nodebug" ] ; then
     BUILDTYPE=RELEASE
 fi
-
+BUILDTYPE=DEBUG
 NPROC=`which nproc`
 if [ "$NPROC" = "" ] ; then
 	PROCS=2

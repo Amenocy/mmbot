@@ -22,3 +22,6 @@ www/src/.cache
 /core
 /new_web
 /www/new
+/.vscode
+/.idea
+.ds_store
