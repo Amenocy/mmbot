@@ -259,37 +259,37 @@ MyLocalBrokerIFC::syncTrades(json::Value lastId, const std::string_view &pair)
 		}
 		trades = trades.reverse();
 		Value ftrades = trades.filter([&](Value r)
-			{ return lastId == r["id"]; });
+			{ return lastId != r["id"]; });
 		findMostID(trades);
 		if (!trades.empty() && ftrades.empty())
 		{
 			return {{}, mostID};
 		}
 		return {
-		mapJSON(ftrades,
-			[&](Value rw) {
-				double size = rw["amount"].getNumber() * (rw["type"].getString() == "buy" ? 1 : -1);
-				double price = rw["price"].getNumber();
-				double fee = rw["fee"].getNumber();
-				double eff_price = price;  
-				double eff_size = size;
+			mapJSON(ftrades,
+				[&](Value rw) {
+					double size = rw["amount"].getNumber() * (rw["type"].getString() == "buy" ? 1 : -1);
+					double price = rw["price"].getNumber();
+					double fee = rw["fee"].getNumber();
+					double eff_price = price;  
+					double eff_size = size;
 
-				std::string feeCurrency = rw["type"].getString() == "buy" ?  minfo.asset_symbol : minfo.currency_symbol; 
-				if (feeCurrency == minfo.currency_symbol) {
-					eff_price = (price * size + fee) / size; // Adjust if fee affects price
-				} else if (feeCurrency == minfo.asset_symbol) {
-					eff_size = size - fee;                   // Adjust if fee affects size
-				}
+					std::string feeCurrency = rw["type"].getString() == "buy" ?  minfo.asset_symbol : minfo.currency_symbol; 
+					if (feeCurrency == minfo.currency_symbol) {
+						eff_price = (price * size + fee) / size; // Adjust if fee affects price
+					} else if (feeCurrency == minfo.asset_symbol) {
+						eff_size = size - fee;                   // Adjust if fee affects size
+					}
 
-				return Trade{
-					rw["id"].getUIntLong(),       
-					iso8601ToMillis(rw["timestamp"].getString()),  
-					size, price,
-					eff_size, eff_price
-				};
-			},
-			TradeHistory()),mostID
-	};
+					return Trade{
+						rw["id"].getUIntLong(),       
+						iso8601ToMillis(rw["timestamp"].getString()),  
+						size, price,
+						eff_size, eff_price
+					};
+				},
+				TradeHistory()),mostID
+		};
 	}
 	else
 	{
