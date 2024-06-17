@@ -144,62 +144,61 @@ void MyLocalBrokerIFC::onLoadApiKey(json::Value keyData)
 }
 
 uint64_t MyLocalBrokerIFC::downloadMinuteData(const std::string_view &asset,
-											  const std::string_view &currency,
-											  const std::string_view &hint_pair,
-											  uint64_t time_from,
-											  uint64_t time_to,
-											  HistData &xdata)
+                                              const std::string_view &currency,
+                                              const std::string_view &hint_pair,
+                                              uint64_t time_from,
+                                              uint64_t time_to,
+                                              HistData &xdata)
 {
-	const int CANDLE_INTERVAL = 5 * 60;
-    const int FETCH_LIMIT = 500; 
-	uint64_t current_time = time_from;
-	logDebug("downloadMinuteData",asset,currency,hint_pair,time_from,time_to);
+    const int CANDLE_INTERVAL = 5 * 60;  // 5 minutes in seconds
+    const int FETCH_LIMIT = 500;  // Number of candles to fetch per request
+    uint64_t current_time = time_from;
+    logDebug("downloadMinuteData", asset, currency, hint_pair, time_from, time_to);
+
+    MinuteData data;
 
     while (current_time < time_to) {
         uint64_t end_time = std::min(current_time + CANDLE_INTERVAL * FETCH_LIMIT, time_to);
-		MinuteData data;
-		Value r =
-			publicGET("/market/udf/history", Object{
-													{"resolution", "5"},
-													{"symbol", hint_pair},
-													{"from", time_from},
-													{"to", time_to},
-												});
-		Value t = r["t"];
-		
-		int t_size = sizeof(t) / sizeof(t[0]);
-		std::uint64_t minTime = time_to;
-		 for (int i = 0; i < t_size; i++)
-		{
-			std::uint64_t tm = t[i].getUIntLong();
-			
-				double o = r["o"][i].getNumber();
-				double c = r["c"][i].getNumber();
-				double h = r["h"][i].getNumber();
-				double l = r["l"][i].getNumber();
-				double m = std::sqrt(h * l);
-				data.push_back(c);
-				data.push_back(l);
-				data.push_back(m);
-				data.push_back(h);
-				data.push_back(o);
-				minTime = tm;
-			
-		}
-		
-		std::reverse(data.begin(), data.end());
-		if (data.empty())
-		{
-			return 0;
-		}
-		else
-		{
-			xdata = std::move(data);
-		}
+
+        Value r = publicGET("/market/udf/history", Object{
+            {"resolution", "5"},
+            {"symbol", std::string(hint_pair)},
+            {"from", std::to_string(current_time)},
+            {"to", std::to_string(end_time)}
+        });
+
+        Value t = r["t"];
+        int t_size = t.size();  // Assuming 't' is a JSON array
+
+        for (int i = 0; i < t_size; i++) {
+            std::uint64_t tm = t[i].getUIntLong();
+
+            double o = r["o"][i].getNumber();
+            double c = r["c"][i].getNumber();
+            double h = r["h"][i].getNumber();
+            double l = r["l"][i].getNumber();
+            double m = std::sqrt(h * l);
+
+            data.push_back(c);
+            data.push_back(l);
+            data.push_back(m);
+            data.push_back(h);
+            data.push_back(o);
+        }
+
+        std::reverse(data.begin(), data.end());
+
+        if (data.empty()) {
+            current_time += CANDLE_INTERVAL * FETCH_LIMIT;
+            continue;
+        }
+
+		xdata = std::move(data);
+        current_time = end_time;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        current_time = end_time; 
     }
-	return time_to;
+
+    return  time_to;
 }
 
 json::Value MyLocalBrokerIFC::getMarkets() const
@@ -378,7 +377,7 @@ json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair,
 			}
 			
 	}
-	if (size)
+	if (createOrderSize > 0 )
 	{
 		Value c = privatePOST("/market/orders/add",
 							  json::Object{
@@ -388,7 +387,7 @@ json::Value MyLocalBrokerIFC::placeOrder(const std::string_view &pair,
 								{"dstCurrency", "usdt"},  
 								{"price", price},
 								{"amount", std::abs(createOrderSize)},
-								{"clientOrderId", generateOid(clientId)},
+								// {"clientOrderId", generateOid(clientId)},
 							  });
 		return c["order"]["id"];
 	}
@@ -491,7 +490,6 @@ void MyLocalBrokerIFC::updateSymbols() const
 		amountPrecisions.forEach([&](Value v)
 								 {
             std::string symbol = v.getKey();
-			// todo urgent make symbol lowecase and TEST
 			std::string symbol_low(symbol);
 			std::transform(symbol_low.begin(), symbol_low.end(), symbol_low.begin(), [](unsigned char c)
 				{ return std::tolower(c); });
@@ -505,8 +503,8 @@ void MyLocalBrokerIFC::updateSymbols() const
                 nfo.fees = -1; 
                 nfo.invert_price = false;
                 nfo.leverage = 0; 
-                nfo.min_size = minOrderSizes['usdt'].getNumber();
-            	nfo.min_volume = 0;
+                nfo.min_size = 0;
+            	nfo.min_volume = minOrderSizes['usdt'].getNumber();
                 nfo.private_chart = false;
                 nfo.simulator = false;
                 nfo.wallet_id = "spot";
@@ -560,14 +558,15 @@ void MyLocalBrokerIFC::updateBalances()
 	}
 }
 
-json::Value MyLocalBrokerIFC::generateOid(Value clientId)
-{
-	auto id = nextId++;
-	Value ctx = {id, clientId.stripKey()};
-	std::basic_string<unsigned char> oidBuff;
-	ctx.serializeBinary([&](char c)
-						{ oidBuff.push_back(c); });
-	return json::Value(json::BinaryView(oidBuff), base64url);
+json::Value MyLocalBrokerIFC::generateOid(Value clientId) {
+    // Generate the next ID
+    auto id = nextId++;
+
+    int clientIntId = clientId.getInt();
+    int oid = (id << 16) | (clientIntId & 0xFFFF);
+
+    // Return the integer OID
+    return json::Value(oid);
 }
 
 Value MyLocalBrokerIFC::parseOid(json::Value oid)
